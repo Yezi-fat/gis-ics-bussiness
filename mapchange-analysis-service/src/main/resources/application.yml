@@ -1,0 +1,71 @@
+server:
+  port: 8082
+
+spring:
+  application:
+    name: analysis-service
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_ADDR:nacos:8848}
+        fail-fast: false          # 注册中心未就绪不阻断启动（T-04），Nacos 客户端后台重试注册
+  rabbitmq:
+    host: ${RABBITMQ_HOST:rabbitmq}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+    listener:
+      simple:
+        missing-queues-fatal: false   # 队列拓扑由 task-service 声明；启动顺序不强制（评审 T-04）
+        retry:
+          enabled: true
+          initial-interval: 3s
+          max-attempts: 3             # 消费失败重试 3 次后置 FAILED（J-024）
+  jackson:
+    property-naming-strategy: SNAKE_CASE   # 统一响应包 snake_case（评审 R-10②）
+  servlet:
+    multipart:
+      max-file-size: 100MB        # 上传硬限制（需求 8.3；软限制走 L2 配置 security.upload.*）
+      max-request-size: 500MB
+
+python:
+  infer:     # 自有服务根地址（内部契约路径 /infer/*），允许带反代前缀
+    url: ${PYTHON_INFER_URL:http://infer-service:8001}
+  compute:
+    url: ${PYTHON_COMPUTE_URL:http://compute-service:8002}
+  nlp:
+    url: ${PYTHON_NLP_URL:http://nlp-service:8003}
+
+inference:
+  remote: { endpoint: "${REMOTE_INFER_ENDPOINT:}" }   # 完整推理端点 URL（含路径，直调不拼接）；初始值，运行期以 app_config 为准
+
+security:
+  auth:
+    enabled: ${AUTH_ENABLED:true}     # 鉴权总开关（FR-10.7）
+  internal-token: ${INTERNAL_TOKEN:dev-internal-token}
+
+# 推理调用韧性（FR-5.3，J-025）：超时 30s / 重试 2 次（指数退避）/ 失败率 50% 开闸
+resilience4j:
+  circuitbreaker:
+    instances:
+      remoteInference:
+        sliding-window-type: COUNT_BASED
+        sliding-window-size: 10
+        minimum-number-of-calls: 5
+        failure-rate-threshold: 50
+        wait-duration-in-open-state: 30s
+        permitted-number-of-calls-in-half-open-state: 3
+        automatic-transition-from-open-to-half-open-enabled: true
+  retry:
+    instances:
+      remoteInference:
+        max-attempts: 3
+        wait-duration: 500ms
+        enable-exponential-backoff: true
+        exponential-backoff-multiplier: 2
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus

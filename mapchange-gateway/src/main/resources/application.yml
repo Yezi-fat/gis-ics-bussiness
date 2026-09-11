@@ -1,0 +1,49 @@
+server:
+  port: 8080
+
+spring:
+  application:
+    name: gateway
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_ADDR:nacos:8848}
+        fail-fast: false          # 注册中心未就绪不阻断启动（T-04）
+    gateway:
+      discovery:
+        locator:
+          enabled: false
+      # 路由表（设计 §2.4，七条；对外路径与前端契约完全一致、不改变）
+      routes:
+        - id: analysis
+          uri: lb://analysis-service
+          predicates:
+            - Path=/api/v1/feature-extraction,/api/v1/feature-comparison,/api/v1/temporal-analysis,/api/v1/change-detection,/api/v1/nl-task/**
+        - id: result-export
+          uri: lb://result-service
+          order: -1   # 精确路径优先于 /api/v1/tasks/**
+          predicates:
+            - Path=/api/v1/tasks/*/export
+        - id: task
+          uri: lb://task-service
+          predicates:
+            - Path=/api/v1/tasks/**
+        - id: config
+          uri: lb://config-service
+          predicates:
+            - Path=/api/v1/elements,/api/v1/capabilities,/api/v1/config/**,/api/v1/models/**
+        - id: storage-files
+          uri: lb://storage-service
+          predicates:
+            - Path=/api/v1/files/**
+
+security:
+  auth:
+    enabled: ${AUTH_ENABLED:true}     # 鉴权总开关（FR-10.7）：false 时全系统匿名可用
+  internal-token: ${INTERNAL_TOKEN:dev-internal-token}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus

@@ -1,0 +1,45 @@
+package com.example.mapchange.analysis.inference;
+
+import com.example.mapchange.analysis.client.PythonInferClient;
+import com.example.mapchange.common.core.dto.python.ChangeDetectRequest;
+import com.example.mapchange.common.core.dto.python.ChangeMaskResponse;
+import com.example.mapchange.common.core.dto.python.SegmentationRequest;
+import com.example.mapchange.common.core.dto.python.SegmentationResponse;
+import com.example.mapchange.common.core.enums.InferenceProvider;
+import com.example.mapchange.common.web.config.RemoteConfigCache;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.stereotype.Component;
+
+/**
+ * 本地降级（FR-5.3）：熔断打开且 fallback_to_local=true 时降级本地推理，标记 degraded=true。
+ */
+@Component
+public class LocalFallbackHandler {
+
+    private static final Logger log = LoggerFactory.getLogger(LocalFallbackHandler.class);
+
+    private final PythonInferClient inferClient;
+    private final RemoteConfigCache configCache;
+
+    public LocalFallbackHandler(PythonInferClient inferClient, RemoteConfigCache configCache) {
+        this.inferClient = inferClient;
+        this.configCache = configCache;
+    }
+
+    public boolean fallbackAllowed() {
+        return Boolean.parseBoolean(configCache.getOrDefault("inference.fallback-to-local", "true"));
+    }
+
+    /** 降级到本地 CPU 执行分割（标记 degraded） */
+    public SegmentationResponse segment(SegmentationRequest req) {
+        log.warn("远程推理降级到本地执行: taskId={}", req.taskId());
+        return inferClient.segment(req);
+    }
+
+    /** 降级到本地 CPU 执行变化检测（标记 degraded） */
+    public ChangeMaskResponse detectChange(ChangeDetectRequest req) {
+        log.warn("远程推理降级到本地执行: taskId={}", req.taskId());
+        return inferClient.detectChange(req);
+    }
+}

@@ -1,0 +1,41 @@
+server:
+  port: 8081
+
+spring:
+  application:
+    name: task-service
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_ADDR:nacos:8848}
+        fail-fast: false          # 注册中心未就绪不阻断启动（T-04），Nacos 客户端后台重试注册
+  datasource:
+    url: jdbc:postgresql://${PG_HOST:postgres}:${PG_PORT:5432}/${PG_DB:mapchange}?currentSchema=task
+    username: ${PG_USER:mapchange}
+    password: ${PG_PASSWORD:mapchange}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+    schemas: task
+    default-schema: task
+  rabbitmq:
+    host: ${RABBITMQ_HOST:rabbitmq}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+  jackson:
+    property-naming-strategy: SNAKE_CASE   # 统一响应包 snake_case（评审 R-10②）
+
+security:
+  auth:
+    enabled: ${AUTH_ENABLED:true}     # 鉴权总开关（FR-10.7）：false 时内部令牌校验跳过
+  internal-token: ${INTERNAL_TOKEN:dev-internal-token}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus

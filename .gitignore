@@ -1,0 +1,20 @@
+# 构建产物
+target/
+*.class
+*.jar
+*.log
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.settings/
+.classpath
+.project
+
+# 本仓库内部工作目录（不公开：需求/设计/评审文档、检查点、工作任务、部署编排、测试数据）
+docs/
+checkpoint/
+task/
+deploy/
+testdata/

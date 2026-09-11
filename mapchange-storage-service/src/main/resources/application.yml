@@ -1,0 +1,43 @@
+server:
+  port: 8084
+
+spring:
+  application:
+    name: storage-service
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_ADDR:nacos:8848}
+        fail-fast: false          # 注册中心未就绪不阻断启动（T-04），Nacos 客户端后台重试注册
+  rabbitmq:
+    host: ${RABBITMQ_HOST:rabbitmq}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+  jackson:
+    property-naming-strategy: SNAKE_CASE   # 统一响应包 snake_case（评审 R-10②）
+  servlet:
+    multipart:
+      max-file-size: 100MB
+      max-request-size: 500MB
+
+storage:
+  provider: ${STORAGE_PROVIDER:auto}      # oss / obs / local / auto（auto 探测装配，FR-4.4）
+  local:
+    dir: ${STORAGE_LOCAL_DIR:/data/mapchange}   # local 模式卷挂载目录（必须持久化挂载）
+    replicas-check: ${EXPECTED_REPLICAS:1}       # local 模式副本数 > 1 拒绝启动
+  oss:
+    endpoint: ${OSS_ENDPOINT:}            # 完整 URL（约束 #10）
+  obs:
+    endpoint: ${OBS_ENDPOINT:}            # 完整 URL（约束 #10）
+
+security:
+  auth:
+    enabled: ${AUTH_ENABLED:true}
+  internal-token: ${INTERNAL_TOKEN:dev-internal-token}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus

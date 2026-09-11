@@ -1,0 +1,45 @@
+server:
+  port: 8083
+
+spring:
+  application:
+    name: result-service
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_ADDR:nacos:8848}
+        fail-fast: false          # 注册中心未就绪不阻断启动（T-04），Nacos 客户端后台重试注册
+  datasource:
+    url: jdbc:postgresql://${PG_HOST:postgres}:${PG_PORT:5432}/${PG_DB:mapchange}?currentSchema=result
+    username: ${PG_USER:mapchange}
+    password: ${PG_PASSWORD:mapchange}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+    schemas: result
+    default-schema: result
+  rabbitmq:
+    host: ${RABBITMQ_HOST:rabbitmq}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+  jackson:
+    property-naming-strategy: SNAKE_CASE   # 统一响应包 snake_case（评审 R-10②）
+
+python:
+  compute:      # 懒矢量化（配置地址直连）
+    url: ${PYTHON_COMPUTE_URL:http://compute-service:8002}
+
+security:
+  auth:
+    enabled: ${AUTH_ENABLED:true}
+  internal-token: ${INTERNAL_TOKEN:dev-internal-token}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus

@@ -1,0 +1,53 @@
+server:
+  port: 8085
+
+spring:
+  application:
+    name: config-service
+  rabbitmq:
+    host: ${RABBITMQ_HOST:rabbitmq}
+    port: ${RABBITMQ_PORT:5672}
+    username: ${RABBITMQ_USER:guest}
+    password: ${RABBITMQ_PASSWORD:guest}
+  cloud:
+    nacos:
+      discovery:
+        server-addr: ${NACOS_ADDR:nacos:8848}
+        fail-fast: false          # 注册中心未就绪不阻断启动（T-04），Nacos 客户端后台重试注册
+    openfeign:
+      client:
+        config:
+          analysis-service:   # capabilities 聚合单边超时 2s（评审 P-06）
+            connect-timeout: 1000
+            read-timeout: 2000
+          storage-service:
+            connect-timeout: 1000
+            read-timeout: 2000
+  datasource:
+    url: jdbc:postgresql://${PG_HOST:postgres}:${PG_PORT:5432}/${PG_DB:mapchange}?currentSchema=config
+    username: ${PG_USER:mapchange}
+    password: ${PG_PASSWORD:mapchange}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  flyway:
+    enabled: true
+    schemas: config
+    default-schema: config
+  jackson:
+    property-naming-strategy: SNAKE_CASE   # 统一响应包 snake_case（评审 R-10②）
+
+models:
+  shared-dir: ${MODELS_SHARED_DIR:/models}   # 模型命名卷挂载目录（与 infer-service 共享，设计 §3.7）
+
+security:
+  auth:
+    enabled: ${AUTH_ENABLED:true}
+  internal-token: ${INTERNAL_TOKEN:dev-internal-token}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,prometheus
