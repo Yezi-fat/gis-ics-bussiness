@@ -9,6 +9,23 @@ spring:
       discovery:
         server-addr: ${NACOS_ADDR:nacos:8848}
         fail-fast: false          # 注册中心未就绪不阻断启动（T-04），Nacos 客户端后台重试注册
+    openfeign:
+      client:
+        config:
+          # Python 调用超时分档（J-09/B-2）：同步小图短超时快速失败；
+          # 异步走长超时——4096² CPU 推理上限 15min（需求 8.1），另留 Python 信号量排队余量
+          python-infer-sync:
+            connect-timeout: ${PYTHON_INFER_CONNECT_TIMEOUT_MS:5000}
+            read-timeout: ${PYTHON_INFER_SYNC_READ_TIMEOUT_MS:60000}
+          python-infer:
+            connect-timeout: ${PYTHON_INFER_CONNECT_TIMEOUT_MS:5000}
+            read-timeout: ${PYTHON_INFER_ASYNC_READ_TIMEOUT_MS:960000}
+          python-compute:
+            connect-timeout: ${PYTHON_COMPUTE_CONNECT_TIMEOUT_MS:5000}
+            read-timeout: ${PYTHON_COMPUTE_READ_TIMEOUT_MS:300000}
+          python-nlp:
+            connect-timeout: ${PYTHON_NLP_CONNECT_TIMEOUT_MS:5000}
+            read-timeout: ${PYTHON_NLP_READ_TIMEOUT_MS:70000}
   rabbitmq:
     host: ${RABBITMQ_HOST:rabbitmq}
     port: ${RABBITMQ_PORT:5672}
@@ -29,12 +46,13 @@ spring:
       max-request-size: 500MB
 
 python:
+  # Python 三服务直连地址（约束 #9：无状态、不进注册中心）；host/port 每服务单独成参，部署期动态调整
   infer:     # 自有服务根地址（内部契约路径 /infer/*），允许带反代前缀
-    url: ${PYTHON_INFER_URL:http://infer-service:8001}
+    url: http://${PYTHON_INFER_HOST:infer-service}:${PYTHON_INFER_PORT:8001}
   compute:
-    url: ${PYTHON_COMPUTE_URL:http://compute-service:8002}
+    url: http://${PYTHON_COMPUTE_HOST:compute-service}:${PYTHON_COMPUTE_PORT:8002}
   nlp:
-    url: ${PYTHON_NLP_URL:http://nlp-service:8003}
+    url: http://${PYTHON_NLP_HOST:nlp-service}:${PYTHON_NLP_PORT:8003}
 
 inference:
   remote: { endpoint: "${REMOTE_INFER_ENDPOINT:}" }   # 完整推理端点 URL（含路径，直调不拼接）；初始值，运行期以 app_config 为准

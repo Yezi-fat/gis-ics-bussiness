@@ -1,13 +1,15 @@
 package com.example.mapchange.analysis.inference;
 
-import com.example.mapchange.common.core.dto.python.PythonHealthResponse;
+import com.example.mapchange.common.core.dto.python.InferHealthResponse;
+import com.example.mapchange.common.core.dto.python.NlpHealthResponse;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
 
 /**
- * 环境探测（FR-5.6/5.7）：远程端点连通性 + infer-service /health（GPU/CPU 能力上报）。
+ * 环境探测（FR-5.6/5.7）：远程端点连通性 + infer-service /health（GPU/CPU 能力上报）
+ * + nlp-service /health（NLU 熔断器状态，FR-9.7 监控告警，B-3）。
  */
 @Component
 public class EnvironmentProbe {
@@ -16,9 +18,12 @@ public class EnvironmentProbe {
 
     private final RestClient restClient = RestClient.create();
     private final com.example.mapchange.analysis.client.PythonInferClient inferClient;
+    private final com.example.mapchange.analysis.client.PythonNlpClient nlpClient;
 
-    public EnvironmentProbe(com.example.mapchange.analysis.client.PythonInferClient inferClient) {
+    public EnvironmentProbe(com.example.mapchange.analysis.client.PythonInferClient inferClient,
+                            com.example.mapchange.analysis.client.PythonNlpClient nlpClient) {
         this.inferClient = inferClient;
+        this.nlpClient = nlpClient;
     }
 
     /** 连通性探测（收到任何 HTTP 响应即视为可达）；未配置返回 false 且记 INFO（FR-5.6 正常形态） */
@@ -42,11 +47,26 @@ public class EnvironmentProbe {
     }
 
     /** 调 infer-service /health；失败返回 null（视为不可用） */
-    public PythonHealthResponse probeLocal() {
+    public InferHealthResponse probeLocal() {
         try {
             return inferClient.health();
         } catch (Exception e) {
             log.warn("infer-service /health 探测失败: {}", e.getMessage());
+            return null;
+        }
+    }
+
+    /** 调 nlp-service /health；失败返回 null。熔断器非 closed 记 WARN（FR-9.7 监控告警） */
+    public NlpHealthResponse probeNlp() {
+        try {
+            NlpHealthResponse health = nlpClient.health();
+            if (health != null && health.nlu() != null && !"closed".equals(health.nlu().circuit())) {
+                log.warn("nlp-service NLU 熔断器状态: {}（provider={}）",
+                        health.nlu().circuit(), health.nlu().provider());
+            }
+            return health;
+        } catch (Exception e) {
+            log.warn("nlp-service /health 探测失败: {}", e.getMessage());
             return null;
         }
     }

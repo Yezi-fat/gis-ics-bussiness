@@ -31,15 +31,15 @@ public class LocalFallbackHandler {
         return Boolean.parseBoolean(configCache.getOrDefault("inference.fallback-to-local", "true"));
     }
 
-    /** 降级到本地 CPU 执行分割（标记 degraded） */
+    /** 降级到本地执行分割（标记 degraded；不带 provider 提示，由 infer-service 本地默认兜底） */
     public SegmentationResponse segment(SegmentationRequest req) {
-        log.warn("远程推理降级到本地执行: taskId={}", req.taskId());
-        return inferClient.segment(req);
+        log.warn("远程推理降级到本地执行（默认 provider 兜底）");
+        return inferClient.segmentWithDefaultProvider(req);
     }
 
-    /** 降级到本地 CPU 执行变化检测（标记 degraded） */
+    /** 降级到本地执行变化检测（标记 degraded；不带 provider 提示） */
     public ChangeMaskResponse detectChange(ChangeDetectRequest req) {
-        log.warn("远程推理降级到本地执行: taskId={}", req.taskId());
-        return inferClient.detectChange(req);
+        log.warn("远程推理降级到本地执行（默认 provider 兜底）");
+        return inferClient.detectChangeWithDefaultProvider(req);
     }
 }

@@ -103,17 +103,45 @@ public class ModelRegistryService {
                 target.getModelType());
     }
 
-    /** 模型文件下发：storage-service 取出 → 共享卷 {name}/{version}/model.onnx */
+    /**
+     * 模型文件下发（J-05/A-2）：storage_key 两种形态——
+     * ① 目录前缀（推荐，FR-3.2 双产物）：其下固定两对象 {storage_key}/fp32.onnx 与
+     *   {storage_key}/int8.onnx，**均为必需**（infer-service 加载时两件齐备校验，缺件即
+     *   MODEL_NOT_READY，2026-09-12 联调实测），缺任一件拒绝登记；
+     * ② 单文件 .onnx（兼容旧登记）：视作 fp32 单产物下发，记 WARN（Python 侧将因缺 int8 不可加载，
+     *   仅供元数据登记/老版本回滚场景）。
+     * 下发目标固定命名 {sharedDir}/{name}/{version}/fp32.onnx|int8.onnx（infer-service 按名+版本懒加载）。
+     */
     private void deliverToSharedVolume(ModelRegisterRequest r) {
         Path dir = sharedDir.resolve(r.modelName()).resolve(r.modelVersion());
-        Path target = dir.resolve("model.onnx");
-        try (InputStream in = storageClient.get(r.storageKey()).getInputStream()) {
+        String key = r.storageKey();
+        try {
             Files.createDirectories(dir);
+        } catch (IOException e) {
+            throw new BizException(ErrorCode.INTERNAL_ERROR,
+                    "模型目录创建失败（%s）: %s".formatted(dir, e.getMessage()));
+        }
+        if (key.endsWith(".onnx")) {
+            copyFromStorage(key, dir.resolve("fp32.onnx"));
+            log.warn("单产物登记（缺 int8.onnx，infer-service 将无法加载该版本，仅供元数据登记）: {}@{}",
+                    r.modelName(), r.modelVersion());
+            return;
+        }
+        String prefix = key.endsWith("/") ? key : key + "/";
+        copyFromStorage(prefix + "fp32.onnx", dir.resolve("fp32.onnx"));
+        copyFromStorage(prefix + "int8.onnx", dir.resolve("int8.onnx"));
+    }
+
+    private void copyFromStorage(String storageKey, Path target) {
+        try (InputStream in = storageClient.get(storageKey).getInputStream()) {
             Files.copy(in, target, StandardCopyOption.REPLACE_EXISTING);
             log.info("model file delivered to shared volume: {}", target);
         } catch (IOException e) {
             throw new BizException(ErrorCode.INTERNAL_ERROR,
-                    "模型文件下发失败（storage_key=%s）: %s".formatted(r.storageKey(), e.getMessage()));
+                    "模型文件下发失败（storage_key=%s）: %s".formatted(storageKey, e.getMessage()));
+        } catch (BizException e) {
+            throw new BizException(ErrorCode.INVALID_INPUT,
+                    "模型产物不存在或不可读（storage_key=%s）".formatted(storageKey));
         }
     }
 

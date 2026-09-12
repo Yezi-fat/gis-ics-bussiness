@@ -1,9 +1,11 @@
 package com.example.mapchange.analysis.validation;
 
 import com.example.mapchange.analysis.client.ConfigClient;
+import com.example.mapchange.analysis.inference.InferenceProviderResolver;
 import com.example.mapchange.common.core.api.BizException;
 import com.example.mapchange.common.core.api.ErrorCode;
 import com.example.mapchange.common.core.dto.ElementDto;
+import com.example.mapchange.common.core.dto.python.InferHealthResponse;
 import com.example.mapchange.common.core.geo.GeoExtent;
 import com.example.mapchange.common.core.geo.GeoExtentUtils;
 import com.example.mapchange.common.core.geo.TileMatrixParam;
@@ -43,13 +45,16 @@ public class AnalysisRequestValidator {
 
     private final ConfigClient configClient;
     private final RemoteConfigCache configCache;
+    private final InferenceProviderResolver resolver;
 
     /** 要素目录进程内缓存（TTL 由 config-service 侧保证，调用失败时 1min 内沿用） */
     private volatile List<ElementDto> catalogCache = List.of();
 
-    public AnalysisRequestValidator(ConfigClient configClient, RemoteConfigCache configCache) {
+    public AnalysisRequestValidator(ConfigClient configClient, RemoteConfigCache configCache,
+                                    InferenceProviderResolver resolver) {
         this.configClient = configClient;
         this.configCache = configCache;
+        this.resolver = resolver;
     }
 
     // ---------- 文件 ----------
@@ -119,7 +124,43 @@ public class AnalysisRequestValidator {
             throw new BizException(ErrorCode.UNSUPPORTED_ELEMENTS,
                     "要素类别超出可识别范围: %s；当前支持: %s".formatted(unsupported, catalog.keySet()));
         }
-        return requested.stream().map(catalog::get).toList();
+        List<ElementDto> resolved = requested.stream().map(catalog::get).toList();
+        validateClassIdsCovered(resolved);
+        return resolved;
+    }
+
+    /** 按 ID 列表解析目录项（异步编排用；未命中目录抛 UNSUPPORTED_ELEMENTS） */
+    public List<ElementDto> resolveElements(List<String> elementIds) {
+        Map<String, ElementDto> catalog = catalog().stream()
+                .filter(ElementDto::enabled)
+                .collect(Collectors.toMap(ElementDto::id, Function.identity()));
+        List<String> unsupported = elementIds.stream().filter(e -> !catalog.containsKey(e)).toList();
+        if (!unsupported.isEmpty()) {
+            throw new BizException(ErrorCode.UNSUPPORTED_ELEMENTS,
+                    "任务要素类别已不在目录中: %s；当前支持: %s".formatted(unsupported, catalog.keySet()));
+        }
+        return elementIds.stream().map(catalog::get).toList();
+    }
+
+    /**
+     * J-04/B-4：class_mapping 一致性校验归属 Java——element_catalog.model_class_id 与
+     * infer-service /health 上报的模型类别表对照，超范围直接拒绝，不再调用 Python
+     * （Python 侧 FR-6.6 兜底仍在）。health 不可得（未探测/探测失败/强制 provider 未探测）时跳过。
+     */
+    private void validateClassIdsCovered(List<ElementDto> elements) {
+        InferHealthResponse health = resolver.lastInferHealth();
+        if (health == null || health.models() == null || health.models().segmentation() == null
+                || health.models().segmentation().classIds() == null) {
+            return;
+        }
+        java.util.Set<Integer> classIds = Set.copyOf(health.models().segmentation().classIds());
+        List<String> outOfRange = elements.stream()
+                .filter(e -> !classIds.contains(e.modelClassId()))
+                .map(ElementDto::id).toList();
+        if (!outOfRange.isEmpty()) {
+            throw new BizException(ErrorCode.UNSUPPORTED_ELEMENTS,
+                    "要素类别超出当前分割模型类别表: %s（模型类别: %s）".formatted(outOfRange, classIds));
+        }
     }
 
     /** 当前要素目录（供 NLP 解析注入，J-033） */

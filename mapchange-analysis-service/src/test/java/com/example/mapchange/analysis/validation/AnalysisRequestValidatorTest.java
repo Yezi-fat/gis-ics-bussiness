@@ -1,10 +1,12 @@
 package com.example.mapchange.analysis.validation;
 
 import com.example.mapchange.analysis.client.ConfigClient;
+import com.example.mapchange.analysis.inference.InferenceProviderResolver;
 import com.example.mapchange.common.core.api.ApiResponse;
 import com.example.mapchange.common.core.api.BizException;
 import com.example.mapchange.common.core.api.ErrorCode;
 import com.example.mapchange.common.core.dto.ElementDto;
+import com.example.mapchange.common.core.dto.python.InferHealthResponse;
 import com.example.mapchange.common.core.geo.GeoExtent;
 import com.example.mapchange.common.core.geo.TileRange;
 import com.example.mapchange.common.web.config.RemoteConfigCache;
@@ -20,10 +22,11 @@ import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.Mockito.when;
 
-/** AnalysisRequestValidator 测试（J-021 验收：坐标/多期/要素目录错误码） */
+/** AnalysisRequestValidator 测试（J-021 验收：坐标/多期/要素目录错误码；B-4 类别表一致性校验） */
 class AnalysisRequestValidatorTest {
 
     private AnalysisRequestValidator validator;
+    private InferenceProviderResolver resolver;
 
     @BeforeEach
     void setUp() {
@@ -34,7 +37,8 @@ class AnalysisRequestValidatorTest {
         RemoteConfigCache configCache = Mockito.mock(RemoteConfigCache.class);
         when(configCache.getOrDefault(Mockito.anyString(), Mockito.anyString()))
                 .thenAnswer(inv -> inv.getArgument(1));
-        validator = new AnalysisRequestValidator(configClient, configCache);
+        resolver = Mockito.mock(InferenceProviderResolver.class);
+        validator = new AnalysisRequestValidator(configClient, configCache, resolver);
     }
 
     // ---- 要素目录（FR-6.6） ----
@@ -54,6 +58,26 @@ class AnalysisRequestValidatorTest {
     @Test
     void emptyElementsRejected() {
         assertThrows(BizException.class, () -> validator.validateElements(""));
+    }
+
+    // ---- B-4：element_catalog.model_class_id 与 infer /health 类别表对照 ----
+
+    @Test
+    void classIdOutOfModelRangeRejected() {
+        when(resolver.lastInferHealth()).thenReturn(new InferHealthResponse("ok", false, false,
+                null, 8, new InferHealthResponse.InferModelsHealth(
+                        new InferHealthResponse.ModelHealth(true, "v1", "local-cpu", List.of(0, 1)),
+                        null), false));
+        // building.model_class_id=4 不在模型类别表 [0,1] 中
+        BizException e = assertThrows(BizException.class,
+                () -> validator.validateElements("forest,building"));
+        assertEquals(ErrorCode.UNSUPPORTED_ELEMENTS, e.errorCode());
+    }
+
+    @Test
+    void classIdCheckSkippedWhenHealthAbsent() {
+        when(resolver.lastInferHealth()).thenReturn(null);   // 未探测/探测失败：跳过校验
+        assertEquals(2, validator.validateElements("forest,building").size());
     }
 
     // ---- 坐标一致性（§3.1.5） ----

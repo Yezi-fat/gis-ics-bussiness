@@ -2,7 +2,7 @@ package com.example.mapchange.analysis.client;
 
 import com.example.mapchange.common.core.dto.python.NlParseRequest;
 import com.example.mapchange.common.core.dto.python.NlParseResponse;
-import com.example.mapchange.common.core.dto.python.PythonHealthResponse;
+import com.example.mapchange.common.core.dto.python.NlpHealthResponse;
 import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
@@ -16,5 +16,5 @@ public interface PythonNlpClient {
     NlParseResponse parse(@RequestBody NlParseRequest req);
 
     @GetMapping("/health")
-    PythonHealthResponse health();
+    NlpHealthResponse health();
 }

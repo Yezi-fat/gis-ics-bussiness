@@ -5,9 +5,12 @@ import com.fasterxml.jackson.databind.JsonNode;
 import java.util.Map;
 
 /**
- * 语义分割响应（评审 R-02：蒙版 base64 随响应返回，Java 代收上传）。
- * masks：element → base64 PNG；combinedMask：按类别着色的合成蒙版；statistics：各类 area_px/area_m2/ratio/patch_count。
+ * 语义分割响应（《Python推理计算服务接口文档》§1.1）。
+ * combined_mask_png_b64：按类别着色的合成蒙版（RGBA）；per_class_masks：各类独立二值蒙版（0/255）；
+ * geo_transform：GDAL 六参数仿射，Java 透传给 compute 的 diff/vectorize；
+ * actual_provider：实际执行提供方（降级时如实标记，小写连字符，如 local-cpu）。
  */
-public record SegmentationResponse(String taskId, Map<String, String> masks, String combinedMask,
-                                   JsonNode statistics, String modelName, String modelVersion) {
+public record SegmentationResponse(String combinedMaskPngB64, Map<String, String> perClassMasks,
+                                   JsonNode statistics, double[] geoTransform, ModelInfo modelInfo,
+                                   String actualProvider, Long elapsedMs) {
 }

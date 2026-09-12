@@ -1,16 +1,17 @@
 package com.example.mapchange.common.core.dto.python;
 
-import com.example.mapchange.common.core.geo.GeoExtent;
+import com.fasterxml.jackson.annotation.JsonInclude;
 
 import java.util.List;
 import java.util.Map;
 
 /**
- * 语义分割请求（Java↔Python 契约，细节以 Python 设计文档 §4 与 OpenAPI 快照为准）。
- * 影像引用一律为内网预签名 URL（评审 P-03）；蒙版以 base64 随响应返回（评审 R-02）。
- * elementClassMap：要素类别 ID → 模型输出类别 ID（FR-6.2 映射随请求下发）。
+ * 语义分割请求（Java→Python infer-service 契约，以《Python推理计算服务接口文档》§1.1 为准）。
+ * 影像引用一律为内网预签名 URL（评审 P-03）；geo_extent 为 [minx,miny,maxx,maxy] 数组形态；
+ * class_mapping/colors 自 element_catalog 下发（J-03/J-06）；task 关联走 X-Task-Id 请求头（MDC 透传）。
  */
-public record SegmentationRequest(String taskId, String imageUrl, List<String> elements,
-                                  Map<String, Integer> elementClassMap, Integer minArea,
-                                  GeoExtent geoExtent, String modelName, String modelVersion) {
+@JsonInclude(JsonInclude.Include.NON_NULL)   // 可选字段为 null 时不下发（Python pydantic 非可空校验，显式 null 会 422）
+public record SegmentationRequest(String imageUrl, double[] geoExtent, List<String> elements,
+                                  Map<String, Integer> classMapping, Map<String, String> colors,
+                                  Integer minArea, String modelName, String modelVersion) {
 }

@@ -75,17 +75,20 @@ class FeatureExtractionSyncFlowTest {
     static void startStub() {
         pythonStub = new WireMockServer(0);
         pythonStub.start();
+        // 《Python推理计算服务接口文档》§1.1/§2.2 真实契约形态打桩
         pythonStub.stubFor(post(urlEqualTo("/infer/segmentation")).willReturn(aResponse()
                 .withHeader("Content-Type", "application/json")
                 .withBody("""
-                        {"task_id":"t","masks":{"forest":"%s"},"combined_mask":"%s",
+                        {"combined_mask_png_b64":"%s","per_class_masks":{"forest":"%s"},
                          "statistics":{"forest":{"area_px":1,"area_m2":2.5,"ratio":1.0,"patch_count":1}},
-                         "model_name":"landcover-seg","model_version":"v2.0"}
+                         "geo_transform":[-180,1.0,0,90,0,-1.0],
+                         "model_info":{"name":"landcover-seg","version":"v2.0","provider":"local-cpu","class_ids":[0,1]},
+                         "actual_provider":"local-cpu","elapsed_ms":5}
                         """.formatted(Base64.getEncoder().encodeToString(PNG_1PX),
                         Base64.getEncoder().encodeToString(PNG_1PX)))));
         pythonStub.stubFor(post(urlEqualTo("/compute/vectorize")).willReturn(aResponse()
                 .withHeader("Content-Type", "application/json")
-                .withBody("{\"task_id\":\"t\",\"features\":[]}")));
+                .withBody("{\"regions\":[]}")));
     }
 
     @AfterAll
@@ -126,6 +129,7 @@ class FeatureExtractionSyncFlowTest {
                         .param("geo_extent", "[-180,-90,0,90]"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.code").value("OK"))
+                .andExpect(jsonPath("$.data.inference.provider").value("local_cpu"))
                 .andExpect(jsonPath("$.data.inference.model_name").value("landcover-seg"))
                 .andExpect(jsonPath("$.data.inference.degraded").value(false))
                 .andExpect(jsonPath("$.data.layers[0].element").value("forest"))

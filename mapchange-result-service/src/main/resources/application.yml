@@ -9,6 +9,12 @@ spring:
       discovery:
         server-addr: ${NACOS_ADDR:nacos:8848}
         fail-fast: false          # 注册中心未就绪不阻断启动（T-04），Nacos 客户端后台重试注册
+    openfeign:
+      client:
+        config:
+          python-compute:
+            connect-timeout: ${PYTHON_COMPUTE_CONNECT_TIMEOUT_MS:5000}
+            read-timeout: ${PYTHON_COMPUTE_READ_TIMEOUT_MS:300000}
   datasource:
     url: jdbc:postgresql://${PG_HOST:postgres}:${PG_PORT:5432}/${PG_DB:mapchange}?currentSchema=result
     username: ${PG_USER:mapchange}
@@ -30,8 +36,8 @@ spring:
     property-naming-strategy: SNAKE_CASE   # 统一响应包 snake_case（评审 R-10②）
 
 python:
-  compute:      # 懒矢量化（配置地址直连）
-    url: ${PYTHON_COMPUTE_URL:http://compute-service:8002}
+  compute:      # 懒矢量化（配置地址直连；host/port 单独成参，部署期动态调整）
+    url: http://${PYTHON_COMPUTE_HOST:compute-service}:${PYTHON_COMPUTE_PORT:8002}
 
 security:
   auth:

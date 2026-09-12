@@ -23,6 +23,8 @@ public enum ErrorCode {
     TASK_NOT_CANCELLABLE(409),
     /** 配准失败/偏差过大（FR-7.7） */
     ALIGNMENT_FAILED(422),
+    /** 自然语言解析意图与位置均缺失、完全不可执行（FR-9.8） */
+    LOCATION_UNRESOLVED(422),
     /** 限流 */
     RATE_LIMITED(429),
     /** 推理不可用且未允许降级（FR-5.3） */

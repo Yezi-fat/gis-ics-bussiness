@@ -41,6 +41,8 @@ security:
   auth:
     enabled: ${AUTH_ENABLED:true}     # 鉴权总开关（FR-10.7）：false 时全系统匿名可用
   internal-token: ${INTERNAL_TOKEN:dev-internal-token}
+  jwt:
+    secret: ${JWT_SECRET:dev-jwt-secret-key-at-least-32-bytes-long}   # HS256 密钥（≥32 字节，生产必改）
 
 management:
   endpoints:

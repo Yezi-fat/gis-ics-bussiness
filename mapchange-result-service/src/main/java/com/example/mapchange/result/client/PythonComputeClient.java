@@ -6,7 +6,7 @@ import org.springframework.cloud.openfeign.FeignClient;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 
-/** Python compute-service 客户端（懒矢量化，配置地址直连） */
+/** Python compute-service 客户端（懒矢量化；配置地址直连；蒙版 base64 上行） */
 @FeignClient(name = "python-compute", url = "${python.compute.url}", configuration = com.example.mapchange.common.web.config.CommonFeignConfiguration.class)
 public interface PythonComputeClient {
 

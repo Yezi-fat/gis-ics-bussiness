@@ -3,10 +3,11 @@ package com.example.mapchange.result.service;
 import com.example.mapchange.common.core.api.BizException;
 import com.example.mapchange.common.core.api.ErrorCode;
 import com.example.mapchange.common.core.dto.FeatureCollection;
-import com.example.mapchange.common.core.dto.RegionsFileRequest;
-import com.example.mapchange.common.core.dto.SignUrlRequest;
 import com.example.mapchange.common.core.dto.python.VectorizeRequest;
 import com.example.mapchange.common.core.geo.GeoExtent;
+import com.example.mapchange.common.core.geo.GeoTransforms;
+import com.example.mapchange.common.core.util.PngSizeReader;
+import com.example.mapchange.common.core.util.RegionFeatureMapper;
 import com.example.mapchange.result.client.PythonComputeClient;
 import com.example.mapchange.result.client.StorageClient;
 import com.example.mapchange.result.client.TaskClient;
@@ -19,6 +20,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.stereotype.Service;
 
+import java.util.Base64;
 import java.util.List;
 import java.util.UUID;
 
@@ -67,13 +69,20 @@ public class LazyVectorizeService {
         }
         ArrayNode features = MAPPER.createArrayNode();
         for (LayerEntity layer : layers) {
-            String maskUrl = storageClient.signUrl(
-                    new SignUrlRequest(layer.getStorageKey(), "INTERNAL", null)).data().url();
-            var resp = computeClient.vectorize(new VectorizeRequest(taskId.toString(), maskUrl, null,
-                    layer.getPeriod(), layer.getElement(), layer.getLayerType().name(), extent));
-            if (resp.features() != null) {
-                resp.features().forEach(features::add);
+            // compute 契约：蒙版 base64 上行（《Python推理计算服务接口文档》§2.2）——从存储取回编码
+            byte[] maskBytes;
+            try (var in = storageClient.get(layer.getStorageKey()).getInputStream()) {
+                maskBytes = in.readAllBytes();
+            } catch (java.io.IOException e) {
+                throw new BizException(ErrorCode.INTERNAL_ERROR,
+                        "蒙版读取失败: " + layer.getStorageKey());
             }
+            double[] geoTransform = extent != null ? deriveGeoTransform(maskBytes, extent) : null;
+            var resp = computeClient.vectorize(new VectorizeRequest(
+                    Base64.getEncoder().encodeToString(maskBytes), null, geoTransform));
+            RegionFeatureMapper.toFeatures(resp, layer.getPeriod(), layer.getElement(),
+                    RegionFeatureMapper.regionTypeOf(layer.getLayerType().name()))
+                    .forEach(features::add);
         }
         java.util.List<com.fasterxml.jackson.databind.JsonNode> featureList = new java.util.ArrayList<>();
         features.forEach(featureList::add);
@@ -100,5 +109,15 @@ public class LazyVectorizeService {
         } catch (Exception e) {
             return null;
         }
+    }
+
+    /** 懒路径无 infer 响应在手：由蒙版 PNG 尺寸 + payload geo_extent 推导 geo_transform（同 Python 线性口径） */
+    private double[] deriveGeoTransform(byte[] maskBytes, GeoExtent extent) {
+        int[] size = PngSizeReader.readSize(maskBytes);
+        if (size == null) {
+            log.warn("蒙版非 PNG 或头不完整，geo_transform 缺省（矢量化为像素坐标）");
+            return null;
+        }
+        return GeoTransforms.fromExtent(extent, size[0], size[1]);
     }
 }

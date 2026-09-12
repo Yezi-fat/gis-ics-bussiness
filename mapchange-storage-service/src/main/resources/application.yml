@@ -26,6 +26,10 @@ storage:
   local:
     dir: ${STORAGE_LOCAL_DIR:/data/mapchange}   # local 模式卷挂载目录（必须持久化挂载）
     replicas-check: ${EXPECTED_REPLICAS:1}       # local 模式副本数 > 1 拒绝启动
+    # 签名 URL base：public 供前端（经 gateway）；internal 供 Python 拉取（评审 P-03）——
+    # Python 宿主机部署时 internal 须指向宿主机可达地址（如 http://localhost:8084 配合端口映射）
+    public-base-url: ${STORAGE_PUBLIC_BASE_URL:http://localhost:8080}
+    internal-base-url: ${STORAGE_INTERNAL_BASE_URL:http://storage-service:8084}
   oss:
     endpoint: ${OSS_ENDPOINT:}            # 完整 URL（约束 #10）
   obs:

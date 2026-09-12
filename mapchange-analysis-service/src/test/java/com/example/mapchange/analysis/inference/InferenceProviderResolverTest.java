@@ -1,6 +1,6 @@
 package com.example.mapchange.analysis.inference;
 
-import com.example.mapchange.common.core.dto.python.PythonHealthResponse;
+import com.example.mapchange.common.core.dto.python.InferHealthResponse;
 import com.example.mapchange.common.core.enums.InferenceProvider;
 import com.example.mapchange.common.web.config.RemoteConfigCache;
 import org.junit.jupiter.api.BeforeEach;
@@ -12,17 +12,23 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.mockito.Mockito.when;
 
-/** 三级解析分支测试（J-022：配/未配 remote × 有/无 GPU 四种组合） */
+/** 三级解析分支测试（J-022：配/未配 remote × 有/无 GPU 四种组合；GPU 判定以 gpu_usable 为准，B-3） */
 class InferenceProviderResolverTest {
 
     private RemoteConfigCache configCache;
     private EnvironmentProbe probe;
     private InferenceProviderResolver resolver;
 
-    private static final PythonHealthResponse GPU_HEALTH =
-            new PythonHealthResponse("UP", true, 8192L, 8, List.of());
-    private static final PythonHealthResponse CPU_HEALTH =
-            new PythonHealthResponse("UP", false, null, 8, List.of());
+    private static final InferHealthResponse GPU_HEALTH = new InferHealthResponse("ok",
+            true, true, 8192L, 8,
+            new InferHealthResponse.InferModelsHealth(
+                    new InferHealthResponse.ModelHealth(true, "v1", "local-gpu", List.of(0, 1, 2, 3, 4)),
+                    null), false);
+    private static final InferHealthResponse CPU_HEALTH = new InferHealthResponse("ok",
+            false, false, null, 8,
+            new InferHealthResponse.InferModelsHealth(
+                    new InferHealthResponse.ModelHealth(true, "v1", "local-cpu", List.of(0, 1, 2, 3, 4)),
+                    null), false);
 
     @BeforeEach
     void setUp() {

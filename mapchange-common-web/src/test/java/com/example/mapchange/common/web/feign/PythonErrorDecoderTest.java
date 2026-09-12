@@ -29,17 +29,40 @@ class PythonErrorDecoderTest {
     @ParameterizedTest
     @CsvSource({
             "UNSUPPORTED_ELEMENT,UNSUPPORTED_ELEMENTS",
-            "IMAGE_DECODE_FAILED,INVALID_INPUT",
             "EXTENT_MISMATCH,GEO_EXTENT_MISMATCH",
+            "GEO_EXTENT_MISMATCH,GEO_EXTENT_MISMATCH",
+            "INPUT_TOO_LARGE,INPUT_TOO_LARGE",
+            "ALIGNMENT_FAILED,ALIGNMENT_FAILED",
+            "LOCATION_UNRESOLVED,LOCATION_UNRESOLVED",
             "MODEL_NOT_READY,INFERENCE_UNAVAILABLE",
             "INFERENCE_FAILED,INFERENCE_UNAVAILABLE",
-            "NLU_UNAVAILABLE,NLU_UNAVAILABLE"
+            "NLU_UNAVAILABLE,NLU_UNAVAILABLE",
+            "INTERNAL_ERROR,INTERNAL_ERROR"
     })
     void pythonCodeMapping(String pythonCode, String expected) {
         String body = "{\"code\":\"%s\",\"message\":\"boom\"}".formatted(pythonCode);
         BizException e = (BizException) decoder.decode("m", response(400, body));
         assertEquals(ErrorCode.valueOf(expected), e.errorCode());
         assertEquals("boom", e.getMessage());
+    }
+
+    @Test
+    void imageDecodeFailedMapsToInvalidInput() {
+        String body = "{\"code\":\"IMAGE_DECODE_FAILED\",\"message\":\"影像解码失败（存储端 HTTP 400）\"}";
+        BizException e = (BizException) decoder.decode("m", response(400, body));
+        assertEquals(ErrorCode.INVALID_INPUT, e.errorCode());
+        org.junit.jupiter.api.Assertions.assertFalse(
+                e instanceof com.example.mapchange.common.core.api.ImageUrlExpiredException);
+    }
+
+    @Test
+    void imageDecodeFailedWithStorage403TriggersResignRetry() {
+        // J-02/A-3②：message 携带存储端 403 → ImageUrlExpiredException（编排层重签重试一次）
+        String body = "{\"code\":\"IMAGE_DECODE_FAILED\",\"message\":\"影像拉取失败（存储端 HTTP 403）\"}";
+        BizException e = (BizException) decoder.decode("m", response(400, body));
+        org.junit.jupiter.api.Assertions.assertTrue(
+                e instanceof com.example.mapchange.common.core.api.ImageUrlExpiredException);
+        assertEquals(ErrorCode.INVALID_INPUT, e.errorCode());
     }
 
     @Test

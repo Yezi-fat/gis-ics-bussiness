@@ -1,7 +1,7 @@
 package com.example.mapchange.analysis.inference;
 
 import com.example.mapchange.common.core.dto.InferenceStatusDto;
-import com.example.mapchange.common.core.dto.python.PythonHealthResponse;
+import com.example.mapchange.common.core.dto.python.InferHealthResponse;
 import com.example.mapchange.common.core.enums.InferenceProvider;
 import com.example.mapchange.common.web.config.ConfigGroupRefreshedEvent;
 import com.example.mapchange.common.web.config.RemoteConfigCache;
@@ -30,6 +30,8 @@ public class InferenceProviderResolver {
 
     private final AtomicReference<InferenceProvider> current = new AtomicReference<>();
     private final AtomicReference<String> reason = new AtomicReference<>("未解析");
+    /** 最近一次 infer-service /health 结果（J-04/B-4 类别一致性校验、J-08 聚合用） */
+    private final AtomicReference<InferHealthResponse> lastInferHealth = new AtomicReference<>();
 
     public InferenceProviderResolver(RemoteConfigCache configCache, EnvironmentProbe probe) {
         this.configCache = configCache;
@@ -52,6 +54,11 @@ public class InferenceProviderResolver {
 
     public InferenceProvider current() {
         return current.get();
+    }
+
+    /** 最近一次 infer /health（可能为 null：未探测/探测失败） */
+    public InferHealthResponse lastInferHealth() {
+        return lastInferHealth.get();
     }
 
     public InferenceStatusDto status() {
@@ -79,6 +86,8 @@ public class InferenceProviderResolver {
             reason.set("provider 配置=%s，解析结果=%s".formatted(providerCfg, resolved));
             log.info("推理提供方解析完成: provider={}, 配置={}, endpoint={}", resolved, providerCfg,
                     endpoint == null || endpoint.isBlank() ? "(未配置)" : endpoint);
+            // B-3：顺带探测 nlp-service 健康（熔断器状态监控告警，FR-9.7）；失败不影响解析
+            probe.probeNlp();
         } catch (Exception e) {
             // config-service 未就绪等异常：按 L1 兜底 LOCAL_CPU，不阻断启动（评审 T-04）
             current.set(InferenceProvider.LOCAL_CPU);
@@ -92,9 +101,10 @@ public class InferenceProviderResolver {
         if (endpoint != null && !endpoint.isBlank() && probe.checkRemote(endpoint)) {
             return InferenceProvider.REMOTE;
         }
-        // ② 本地 GPU（infer-service 上报）
-        PythonHealthResponse health = probe.probeLocal();
-        if (health != null && health.gpuAvailable()) {
+        // ② 本地 GPU（infer-service 上报；以 gpu_usable（试建会话通过）为准，B-3）
+        InferHealthResponse health = probe.probeLocal();
+        lastInferHealth.set(health);
+        if (health != null && health.gpuUsable()) {
             return InferenceProvider.LOCAL_GPU;
         }
         // ③ 本地 CPU
