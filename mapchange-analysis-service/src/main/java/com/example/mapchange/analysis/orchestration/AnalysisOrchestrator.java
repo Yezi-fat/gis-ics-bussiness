@@ -1,5 +1,18 @@
 package com.example.mapchange.analysis.orchestration;
 
+import java.io.IOException;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
+import java.util.UUID;
+
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.slf4j.MDC;
+import org.springframework.stereotype.Service;
+
 import com.example.mapchange.analysis.client.PythonComputeClient;
 import com.example.mapchange.analysis.client.ResultClient;
 import com.example.mapchange.analysis.client.StorageClient;
@@ -35,18 +48,6 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-import org.slf4j.MDC;
-import org.springframework.stereotype.Service;
-
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Base64;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
 
 /**
  * 分析编排核心（设计 §2.6/§5）。
@@ -456,6 +457,7 @@ public class AnalysisOrchestrator {
         elements.forEach(e -> {
             classMap.put(e.id(), e.modelClassId());
             colors.put(e.id(), e.color());
+            
         });
         SegmentationRequest req = new SegmentationRequest(signInternal(imageKey),
                 extentArray(geoExtent), elements.stream().map(ElementDto::id).toList(),
