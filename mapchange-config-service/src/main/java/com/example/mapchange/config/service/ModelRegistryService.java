@@ -5,7 +5,11 @@ import com.example.mapchange.common.core.api.ErrorCode;
 import com.example.mapchange.common.core.dto.ModelActivateRequest;
 import com.example.mapchange.common.core.dto.ModelRegisterRequest;
 import com.example.mapchange.common.core.dto.ModelVersionDto;
+import com.example.mapchange.common.core.dto.python.InferModelListResponse;
+import com.example.mapchange.config.client.AnalysisClient;
 import com.example.mapchange.config.client.StorageClient;
+import com.example.mapchange.config.domain.ElementCatalogEntity;
+import com.example.mapchange.config.domain.ElementCatalogRepository;
 import com.example.mapchange.config.domain.ModelRegistryEntity;
 import com.example.mapchange.config.domain.ModelRegistryRepository;
 import org.slf4j.Logger;
@@ -31,6 +35,8 @@ import java.util.Map;
  * → RabbitMQ 配置广播热生效（§3.3）→ analysis-service 后续推理请求携带新模型名/版本 →
  * infer-service 按名+版本从本地模型目录加载。
  * 文件下发（评审 R-03）：登记时经 storage-service 取出写入共享卷 {name}/{version}/。
+ * 激活前置校验（对接事项 J-2，Function-Q3）：与 infer-service /infer/models 对账——
+ * 模型缺失或 fp32 产物缺失拒绝激活；int8 缺失、目录映射超类别表记 WARN。
  */
 @Service
 public class ModelRegistryService {
@@ -40,14 +46,19 @@ public class ModelRegistryService {
     private final ModelRegistryRepository repository;
     private final ConfigService configService;
     private final StorageClient storageClient;
+    private final AnalysisClient analysisClient;
+    private final ElementCatalogRepository elementCatalogRepository;
     private final Path sharedDir;
 
     public ModelRegistryService(ModelRegistryRepository repository, ConfigService configService,
-                                StorageClient storageClient,
+                                StorageClient storageClient, AnalysisClient analysisClient,
+                                ElementCatalogRepository elementCatalogRepository,
                                 @Value("${models.shared-dir:/models}") String sharedDir) {
         this.repository = repository;
         this.configService = configService;
         this.storageClient = storageClient;
+        this.analysisClient = analysisClient;
+        this.elementCatalogRepository = elementCatalogRepository;
         this.sharedDir = Path.of(sharedDir);
     }
 
@@ -78,13 +89,14 @@ public class ModelRegistryService {
         return toDto(saved);
     }
 
-    /** 校验存在性 → 更新激活状态（同类型其余 RETIRED）→ 写 L2 配置 → 广播（经 ConfigService.update） */
+    /** 校验存在性 → 推理服务对账前置校验（J-2）→ 更新激活状态（同类型其余 RETIRED）→ 写 L2 配置 → 广播（经 ConfigService.update） */
     @Transactional
     public void activate(ModelActivateRequest r) {
         ModelRegistryEntity target = repository
                 .findByModelNameAndModelVersion(r.modelName(), r.modelVersion())
                 .orElseThrow(() -> new BizException(ErrorCode.INVALID_INPUT,
                         "模型版本未登记: %s@%s".formatted(r.modelName(), r.modelVersion())));
+        validateAgainstInfer(target);
         // 同类型其余置 RETIRED，目标置 ACTIVE
         repository.findByModelType(target.getModelType()).forEach(e -> {
             boolean isTarget = e.getId().equals(target.getId());
@@ -148,5 +160,79 @@ public class ModelRegistryService {
     private ModelVersionDto toDto(ModelRegistryEntity e) {
         return new ModelVersionDto(e.getModelName(), e.getModelVersion(), e.getModelType(),
                 e.getStorageKey(), e.getStatus(), e.getActivatedAt(), e.getCreatedBy(), e.getCreatedAt());
+    }
+
+    /**
+     * 推理服务实际可用模型清单（对接事项 J-2，经 analysis-service 透传 infer /infer/models）；
+     * 供模型管理页"推理服务实际可用模型"区块展示。infer 不可达抛 INFERENCE_UNAVAILABLE（管理端明确报错）
+     */
+    public InferModelListResponse availableModels() {
+        try {
+            InferModelListResponse data = analysisClient.models().data();
+            if (data == null) {
+                throw new BizException(ErrorCode.INFERENCE_UNAVAILABLE, "推理服务模型清单返回为空");
+            }
+            return data;
+        } catch (BizException e) {
+            throw e;
+        } catch (Exception e) {
+            throw new BizException(ErrorCode.INFERENCE_UNAVAILABLE,
+                    "推理服务模型清单获取失败: " + e.getMessage());
+        }
+    }
+
+    /**
+     * 激活前置校验（J-2）：与 infer /infer/models 对账——
+     * ① 模型版本不在清单中 → 拒绝（激活后必然推理失败，MODEL_NOT_READY）；
+     * ② fp32 产物缺失 → 拒绝；int8 缺失 → WARN（量化通道不可用）；
+     * ③ SEG 类型：启用要素的 model_class_id 须 < class_count-1（检测模型末位通道为背景），超范围 WARN。
+     * infer 不可达时记 WARN 跳过（不阻断激活，推理期 Python 兜底报错）。
+     */
+    private void validateAgainstInfer(ModelRegistryEntity target) {
+        InferModelListResponse available;
+        try {
+            available = analysisClient.models().data();
+        } catch (Exception e) {
+            log.warn("激活前置校验：推理服务模型清单不可用，跳过对账（%s@%s）: %s"
+                    .formatted(target.getModelName(), target.getModelVersion(), e.getMessage()));
+            return;
+        }
+        if (available == null || available.models() == null) {
+            log.warn("激活前置校验：推理服务模型清单为空，跳过对账（{}@{}）",
+                    target.getModelName(), target.getModelVersion());
+            return;
+        }
+        var version = available.models().stream()
+                .filter(m -> target.getModelName().equals(m.name()) && m.versions() != null)
+                .flatMap(m -> m.versions().stream())
+                .filter(v -> target.getModelVersion().equals(v.version()))
+                .findFirst();
+        if (version.isEmpty()) {
+            throw new BizException(ErrorCode.INVALID_INPUT,
+                    "推理服务模型目录中不存在 %s@%s（与 /infer/models 对账失败），请核对名称/版本或先完成登记下发"
+                            .formatted(target.getModelName(), target.getModelVersion()));
+        }
+        var v = version.get();
+        if (!v.fp32()) {
+            throw new BizException(ErrorCode.INVALID_INPUT,
+                    "模型 %s@%s 缺少 fp32 产物，infer-service 无法加载，拒绝激活"
+                            .formatted(target.getModelName(), target.getModelVersion()));
+        }
+        if (!v.int8()) {
+            log.warn("模型 {}@{} 缺少 int8 产物（量化推理通道不可用）", target.getModelName(),
+                    target.getModelVersion());
+        }
+        if ("SEG".equals(target.getModelType()) && v.classCount() != null) {
+            int maxValidClassId = v.classCount() - 2;   // 检测模型末位通道为背景（对接事项 J-1 约束）
+            List<String> outOfRange = elementCatalogRepository.findAll().stream()
+                    .filter(ElementCatalogEntity::isEnabled)
+                    .filter(e -> e.getModelClassId() > maxValidClassId)
+                    .map(ElementCatalogEntity::getId)
+                    .toList();
+            if (!outOfRange.isEmpty()) {
+                log.warn("要素目录存在超出模型类别范围的映射（模型 {}@{} 有效 model_class_id 0~{}）: {}",
+                        target.getModelName(), target.getModelVersion(), maxValidClassId, outOfRange);
+            }
+        }
     }
 }

@@ -10,7 +10,7 @@ import jakarta.persistence.Table;
 @Table(schema = "config", name = "element_catalog")
 public class ElementCatalogEntity {
 
-    /** forest / grassland / snow / building ... */
+    /** forest / river / residential ...（EuroSAT 10 类，V2 迁移起） */
     @Id
     private String id;
 

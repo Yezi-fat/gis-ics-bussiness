@@ -57,11 +57,14 @@ public class CapabilityService {
         configService.groupValues("features").forEach((k, v) ->
                 features.put(k.substring("features.".length()), Boolean.parseBoolean(v)));
 
-        // 推理提供方（单边失败降级 unknown + partial，评审 P-06）
+        // 推理提供方（配置解析口径）+ GPU 实际能力（infer /health gpu_usable，J-3）；
+        // 单边失败降级 unknown + partial（评审 P-06）
         String inferenceProvider;
+        Boolean inferenceGpuUsable = null;
         try {
             var resp = analysisClient.status();
             inferenceProvider = resp.data() != null ? resp.data().provider() : "unknown";
+            inferenceGpuUsable = resp.data() != null ? resp.data().gpuUsable() : null;
         } catch (Exception e) {
             log.warn("capabilities: analysis-service 状态聚合失败，降级 unknown: {}", e.getMessage());
             inferenceProvider = "unknown";
@@ -94,8 +97,8 @@ public class CapabilityService {
         diffColors.put("removed", feature.get("feature.diff-colors.removed"));
         defaults.set("diff_colors", diffColors);
 
-        CapabilitiesView view = new CapabilitiesView(features, inferenceProvider, storageProvider,
-                authEnabled, tileMatrix, defaults, partial);
+        CapabilitiesView view = new CapabilitiesView(features, inferenceProvider, inferenceGpuUsable,
+                storageProvider, authEnabled, tileMatrix, defaults, partial);
         cached = view;
         cachedAt = Instant.now();
         return view;

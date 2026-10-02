@@ -4,6 +4,7 @@ import com.example.mapchange.common.core.api.ApiResponse;
 import com.example.mapchange.common.core.dto.ModelActivateRequest;
 import com.example.mapchange.common.core.dto.ModelRegisterRequest;
 import com.example.mapchange.common.core.dto.ModelVersionDto;
+import com.example.mapchange.common.core.dto.python.InferModelListResponse;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.PutMapping;
@@ -34,6 +35,12 @@ public class ModelAdminController {
     @GetMapping
     public ApiResponse<List<ModelVersionDto>> list() {
         return ApiResponse.ok(modelRegistryService.list());
+    }
+
+    /** 推理服务实际可用模型清单（透传 infer /infer/models，对接事项 J-2；供模型管理页对账展示） */
+    @GetMapping("/available")
+    public ApiResponse<InferModelListResponse> available() {
+        return ApiResponse.ok(modelRegistryService.availableModels());
     }
 
     /** 登记模型版本元数据（REGISTERED；模型文件经 storage-service 取出写入共享卷，设计 §3.7） */

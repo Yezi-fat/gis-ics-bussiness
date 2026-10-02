@@ -62,8 +62,10 @@ public class InferenceProviderResolver {
     }
 
     public InferenceStatusDto status() {
+        InferHealthResponse health = lastInferHealth.get();
         return new InferenceStatusDto(
-                current.get() != null ? current.get().name() : "UNKNOWN", reason.get(), false);
+                current.get() != null ? current.get().name() : "UNKNOWN", reason.get(), false,
+                health != null ? health.gpuUsable() : null);
     }
 
     /** 执行三级解析；任何失败不阻断启动 */

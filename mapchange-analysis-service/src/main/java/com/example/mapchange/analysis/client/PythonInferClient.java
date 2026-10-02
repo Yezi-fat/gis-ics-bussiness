@@ -39,4 +39,8 @@ public interface PythonInferClient {
 
     @GetMapping("/health")
     InferHealthResponse health();
+
+    /** 模型发现（V1.1 §1.4，对接事项 J-2）：infer-service 模型目录（命名卷）实际可用模型清单 */
+    @GetMapping("/infer/models")
+    com.example.mapchange.common.core.dto.python.InferModelListResponse listModels();
 }

@@ -19,19 +19,27 @@ import java.util.List;
 /**
  * 要素类别目录（FR-6.2）：element_catalog 读写 + Caffeine 缓存。
  * TTL 走 L2 运行配置 cache.element-catalog-ttl-min（默认 5min，热生效——按条目过期时间动态计算）。
- * 种子数据（森林/草地/雪山/建筑，含 model_class_id 映射）随服务首次启动写入（幂等）。
+ * 种子数据为 EuroSAT 10 类（与当前激活模型 landcover-yolo-v11/v1.0 类别表一致，
+ * model_class_id=类别索引；Python 概率图通道 10 为背景，禁映射），随服务首次启动写入（幂等）；
+ * 既有部署由 Flyway V2 迁移对齐（2026-10-02，bug-2026-09-28 Function-Q2 / 对接事项 J-1）。
  */
 @Service
 public class ElementCatalogService {
 
     private static final Logger log = LoggerFactory.getLogger(ElementCatalogService.class);
 
-    /** 种子数据（FR-6.2；modelClassId 与分割模型输出类别对齐） */
+    /** 种子数据（FR-6.2；EuroSAT 10 类，modelClassId=模型输出类别索引，索引=模型 class_labels 下标） */
     private static final List<ElementCatalogEntity> SEED = List.of(
+            new ElementCatalogEntity("annual_crop", "一年生作物", "#FFD700", 0, true),
             new ElementCatalogEntity("forest", "森林", "#228B22", 1, true),
-            new ElementCatalogEntity("grassland", "草地", "#9ACD32", 2, true),
-            new ElementCatalogEntity("snow", "雪山覆盖", "#F0F8FF", 3, true),
-            new ElementCatalogEntity("building", "建筑", "#CD853F", 4, true)
+            new ElementCatalogEntity("herbaceous_vegetation", "草本植被", "#9ACD32", 2, true),
+            new ElementCatalogEntity("highway", "公路", "#696969", 3, true),
+            new ElementCatalogEntity("industrial", "工业区", "#CD853F", 4, true),
+            new ElementCatalogEntity("pasture", "牧场", "#6B8E23", 5, true),
+            new ElementCatalogEntity("permanent_crop", "多年生作物", "#DAA520", 6, true),
+            new ElementCatalogEntity("residential", "住宅区", "#DC143C", 7, true),
+            new ElementCatalogEntity("river", "河流", "#1E90FF", 8, true),
+            new ElementCatalogEntity("sea_lake", "海洋湖泊", "#00CED1", 9, true)
     );
 
     private static final String CACHE_KEY = "all";
